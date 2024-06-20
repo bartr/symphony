@@ -7,6 +7,20 @@
 
 ```powershell
 
+az connectedk8s list
+
+az resource list -g $resourceGroup --resource-type "$providerName/solutions" -o table
+
+az resource show -g $resourceGroup --resource-type "$providerName/solutions" -n heartbeat
+
+az resource list -g $resourceGroup --resource-type "$providerName/solutions/versions" -o table
+
+az resource show -g $resourceGroup --namespace $providerName --resource-type versions -n v101 --parent "solutions/heartbeat"
+
+```
+
+```powershell
+
 # edit these as necessary
 $subId = "af54d2ce-0dcb-48f8-9d2d-ff9c53e48c8d"
 $resourceGroup = "bugbashBart"
@@ -62,8 +76,6 @@ $customLocationName = "control"
 $customlocation = "/subscriptions/$subId/resourceGroups/$resourcegroup/providers/Microsoft.ExtendedLocation/customLocations/$customLocationName"
 
 $solutionName = "heartbeat"
-$solutionVersionName = "v1"
-
 
 $solutionBody = '{
     "properties": {
@@ -72,39 +84,32 @@ $solutionBody = '{
         "name": "' + $customlocation + '",
         "type": "CustomLocation"
     },
-    "tags": {},
+    "tags": {
+        "type": "add-in",
+        "namespace": "heartbeat",
+        "owner": "platform"
+    },
     "location": "' + $location + '"
 }'
 Set-Content -Value $solutionBody -Path ".\$solutionName.json"
 az resource create --resource-group $resourceGroup --resource-type "$providerName/solutions" -n $solutionName --is-full-object --properties "@$solutionName.json" --verbose
 
 
-$solutionVersionName = "v1"
+$solutionVersionName = "v100"
 $solutionVersionBody = '{
   "properties": {
-    "metadata" : {
-        "deployment.replicas" : "#1",
-        "service.ports" : "[{\"name\":\"port8080\",\"port\": 8080}]",
-        "service.type" : "LoadBalancer"
-    },
-    "components" : [
-        {
-            "name" : "heartbeat",
-            "type" : "k8s.container",
-            "properties" : {
-                "container.ports" : "[{\"containerPort\":8080,\"protocol\":\"TCP\"}]",
-                "container.imagePullPolicy" : "Always",
-                "container.resources" : "{\"requests\":{\"cpu\":\"100m\",\"memory\":\"100Mi\"}}",
-                "container.image" : "prom/prometheus"
-            }
-        }
-    ]
+    "metadata" : {},
+    "components" : []
   },
   "extendedLocation": {
     "name": "' + $customlocation + '",
     "type": "CustomLocation"
   },
-  "tags": {},
+  "tags": {
+    "version": "1.0.0",
+    "container": "ghcr.io/cse-labs/heartbeat:1.0.0",
+    "expression": "/c/*"
+  },
   "location": "' + $location + '"
 }'
 Set-Content -Value $solutionVersionBody -Path ".\$solutionName-$solutionVersionName.json"
@@ -112,6 +117,27 @@ Set-Content -Value $solutionVersionBody -Path ".\$solutionName-$solutionVersionN
 az resource create --resource-group $resourceGroup --namespace "$providerName" -n $solutionVersionName --resource-type versions --parent "solutions/$solutionName" --is-full-object --properties "@$solutionName-$solutionVersionName.json" --location $location --verbose
 
 
+
+$solutionVersionName = "v101"
+$solutionVersionBody = '{
+  "properties": {
+    "metadata" : {},
+    "components" : []
+  },
+  "extendedLocation": {
+    "name": "' + $customlocation + '",
+    "type": "CustomLocation"
+  },
+  "tags": {
+    "version": "1.0.1",
+    "container": "ghcr.io/cse-labs/heartbeat:1.0.1",
+    "expression": "/m/type/lab"
+  },
+  "location": "' + $location + '"
+}'
+Set-Content -Value $solutionVersionBody -Path ".\$solutionName-$solutionVersionName.json"
+
+az resource create --resource-group $resourceGroup --namespace "$providerName" -n $solutionVersionName --resource-type versions --parent "solutions/$solutionName" --is-full-object --properties "@$solutionName-$solutionVersionName.json" --location $location --verbose
 
 
 # create lab01 target
