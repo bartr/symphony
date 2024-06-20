@@ -7,19 +7,19 @@
 
 ```powershell
 
+# edit these as necessary
+$subId = "af54d2ce-0dcb-48f8-9d2d-ff9c53e48c8d"
+$resourceGroup = "bugbashBart"
+
 $arcCluster = "control"
 $customLocationName = "control"
+$customlocation = "/subscriptions/$subId/resourceGroups/$resourcegroup/providers/Microsoft.ExtendedLocation/customLocations/$customLocationName"
 
-$resourceGroup = "bugbashBart"
-$subId = "af54d2ce-0dcb-48f8-9d2d-ff9c53e48c8d"
 $extensionName = "symphonyext"
 $extensionVersion = "0.0.9"
 $location = "eastus2"
 $targetVersionName = "v1"
-
 $providerName="Microsoft.ToolchainOrchestrator"
-$customlocation = "/subscriptions/$subId/resourceGroups/$resourcegroup/providers/Microsoft.ExtendedLocation/customLocations/$customLocationName"
-
 
 # create cluster
 az aks create --name $arcCluster --resource-group $resourceGroup --os-sku AzureLinux --generate-ssh-key
@@ -52,39 +52,178 @@ $customlocation = "/subscriptions/$subId/resourceGroups/$resourcegroup/providers
 # setup cluster
 
 
+# use the control cluster
 kuse control
-
-$targetName = "lab01"
-$solutionName = "heartbeat"
-$solutionVersionName = "v1"
-
-# create lab01 target / version
 
 # create heartbeat solution / version
 
-# create instance / version
+$arcCluster = "control"
+$customLocationName = "control"
+$customlocation = "/subscriptions/$subId/resourceGroups/$resourcegroup/providers/Microsoft.ExtendedLocation/customLocations/$customLocationName"
 
-
-az resource create --resource-group $resourceGroup --namespace "$providerName" -n $solutionName$solutionVersionName --resource-type versions --parent "solutions/$solutionName" --is-full-object --properties "@$solutionName-$solutionVersionName.json" --location $location --verbose
-
-
-$instanceName = "lab01"
-az resource create --resource-group $resourceGroup --resource-type "$providerName/instances" -n $instanceName --is-full-object --properties "@$instanceName-instance.json" --verbose
-
-
-$instanceScopeName = "heartbeat"
-$instanceVersionName = "v1"
-az resource create --resource-group $resourceGroup --namespace "$providerName" -n $instanceVersionName --resource-type versions --parent "instances/$instanceName" --is-full-object --properties "@$instanceName-instance-$instanceVersionName.json" --location $location --verbose
-
-
-az resource show --resource-group $resourceGroup --namespace "$providerName" -n $instanceVersionName --resource-type versions --parent "instances/$instanceName" --verbose
-
-
-
-
-$targetName = "control"
 $solutionName = "heartbeat"
-$instanceName = "controlinstance"
+$solutionVersionName = "v1"
+
+
+$solutionBody = '{
+    "properties": {
+    },
+    "extendedLocation": {
+        "name": "' + $customlocation + '",
+        "type": "CustomLocation"
+    },
+    "tags": {},
+    "location": "' + $location + '"
+}'
+Set-Content -Value $solutionBody -Path ".\$solutionName.json"
+az resource create --resource-group $resourceGroup --resource-type "$providerName/solutions" -n $solutionName --is-full-object --properties "@$solutionName.json" --verbose
+
+
+$solutionVersionName = "v1"
+$solutionVersionBody = '{
+  "properties": {
+    "metadata" : {
+        "deployment.replicas" : "#1",
+        "service.ports" : "[{\"name\":\"port8080\",\"port\": 8080}]",
+        "service.type" : "LoadBalancer"
+    },
+    "components" : [
+        {
+            "name" : "heartbeat",
+            "type" : "k8s.container",
+            "properties" : {
+                "container.ports" : "[{\"containerPort\":8080,\"protocol\":\"TCP\"}]",
+                "container.imagePullPolicy" : "Always",
+                "container.resources" : "{\"requests\":{\"cpu\":\"100m\",\"memory\":\"100Mi\"}}",
+                "container.image" : "prom/prometheus"
+            }
+        }
+    ]
+  },
+  "extendedLocation": {
+    "name": "' + $customlocation + '",
+    "type": "CustomLocation"
+  },
+  "tags": {},
+  "location": "' + $location + '"
+}'
+Set-Content -Value $solutionVersionBody -Path ".\$solutionName-$solutionVersionName.json"
+
+az resource create --resource-group $resourceGroup --namespace "$providerName" -n $solutionVersionName --resource-type versions --parent "solutions/$solutionName" --is-full-object --properties "@$solutionName-$solutionVersionName.json" --location $location --verbose
+
+
+
+
+# create lab01 target
+$targetName = "lab01"
+$customLocationName = $targetName
+$customlocation = "/subscriptions/$subId/resourceGroups/$resourcegroup/providers/Microsoft.ExtendedLocation/customLocations/$customLocationName"
+
+$targetBody = '{
+    "properties": {
+    },
+    "name": "' + $targetName + '",
+    "extendedLocation": {
+    "name": "' + $customlocation + '",
+    "type": "CustomLocation"
+    },
+    "tags": {},
+    "location": "' + $location + '"
+}'
+Set-Content -Value $targetBody -Path ".\$targetName.json"
+az resource create --resource-group $resourceGroup --resource-type "$providerName/targets" -n $targetName --is-full-object --properties "@$targetName.json" --verbose
+
+
+$targetVersionName = "v1"
+$targetVersionBody = '{
+    "properties": {
+        "topologies" : [
+            {
+                "bindings" : [
+                    {
+                        "role" : "k8s.container",
+                        "provider" : "providers.target.k8s",
+                        "config" : {
+                        "inCluster" : "true"
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "extendedLocation": {
+        "name": "' + $customlocation + '",
+        "type": "CustomLocation"
+    },
+    "tags": {},
+    "location": "' + $location + '"
+}'
+
+Set-Content -Value $targetVersionBody -Path ".\$targetName-$targetVersionName.json"
+
+az resource create --resource-group $resourceGroup --namespace "$providerName" -n $targetVersionName --resource-type versions --parent "targets/$targetName" --is-full-object --properties "@$targetName-$targetVersionName.json" --location $location --verbose
+
+az resource show --resource-group $resourceGroup --namespace "$providerName" -n $targetVersionName --resource-type versions --parent "targets/$targetName" --verbose
+
+
+
+# create lab02 target
+$targetName = "lab02"
+$customLocationName = $targetName
+$customlocation = "/subscriptions/$subId/resourceGroups/$resourcegroup/providers/Microsoft.ExtendedLocation/customLocations/$customLocationName"
+
+$targetBody = '{
+    "properties": {
+    },
+    "name": "' + $targetName + '",
+    "extendedLocation": {
+    "name": "' + $customlocation + '",
+    "type": "CustomLocation"
+    },
+    "tags": {},
+    "location": "' + $location + '"
+}'
+Set-Content -Value $targetBody -Path ".\$targetName.json"
+az resource create --resource-group $resourceGroup --resource-type "$providerName/targets" -n $targetName --is-full-object --properties "@$targetName.json" --verbose
+
+
+$targetVersionName = "v1"
+$targetVersionBody = '{
+    "properties": {
+        "topologies" : [
+            {
+                "bindings" : [
+                    {
+                        "role" : "k8s.container",
+                        "provider" : "providers.target.k8s",
+                        "config" : {
+                        "inCluster" : "true"
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "extendedLocation": {
+        "name": "' + $customlocation + '",
+        "type": "CustomLocation"
+    },
+    "tags": {},
+    "location": "' + $location + '"
+}'
+
+Set-Content -Value $targetVersionBody -Path ".\$targetName-$targetVersionName.json"
+
+az resource create --resource-group $resourceGroup --namespace "$providerName" -n $targetVersionName --resource-type versions --parent "targets/$targetName" --is-full-object --properties "@$targetName-$targetVersionName.json" --location $location --verbose
+
+az resource show --resource-group $resourceGroup --namespace "$providerName" -n $targetVersionName --resource-type versions --parent "targets/$targetName" --verbose
+
+
+
+
+
+
+
 $instanceScopeName = "heartbeat"
 $instanceVersionName = "v1"
 
@@ -92,6 +231,47 @@ az resource create --resource-group $resourceGroup --resource-type "$providerNam
 
 
 
-$instanceName = "lab01instance"
+$targetName = "lab01"
+$customLocationName = $targetName
+$customlocation = "/subscriptions/$subId/resourceGroups/$resourcegroup/providers/Microsoft.ExtendedLocation/customLocations/$customLocationName"
+$instanceName = $targetName + "instance"
+$instanceBody = '{
+    "properties": {
+    },
+    "extendedLocation": {
+        "name": "' + $customlocation + '",
+        "type": "CustomLocation"
+    },
+    "tags": {},
+    "location": "' + $location + '"
+}'
+Set-Content -Value $instanceBody -Path ".\$instanceName.json"
+az resource create --resource-group $resourceGroup --resource-type "$providerName/instances" -n $instanceName --is-full-object --properties "@$instanceName.json" --verbose
+
+
+$instanceScopeName = "heartbeat"
+$instanceVersionName = "v1"
+$instanceVersionBody = '{
+  "properties": {
+    "scope": "' + $instanceScopeName + '",
+    "solution": "' + $solutionName + ':' + $solutionVersionName + '",
+    "target": {
+        "name": "' + $targetName + ':' + $targetVersionName + '"
+    }
+  },
+  "extendedLocation": {
+    "name": "' + $customlocation + '",
+    "type": "CustomLocation"
+  },
+  "tags": {},
+  "location": "' + $location + '"
+}'
+Set-Content -Value $instanceVersionBody -Path ".\$instanceName-$instanceVersionName.json"
+
+az resource create --resource-group $resourceGroup --namespace "$providerName" -n $instanceVersionName --resource-type versions --parent "instances/$instanceName" --is-full-object --properties "@$instanceName-$instanceVersionName.json" --location $location --verbose
+
+az resource show --resource-group $resourceGroup --namespace "$providerName" -n $instanceVersionName --resource-type versions --parent "instances/$instanceName" --verbose
+
+kubectl get deployment -n $instanceScopeName
 
 ```
